@@ -53,6 +53,8 @@ struct appState
 	int debug;
 	struct keyState *keysHead;
 	struct keyState *keysTail;
+	long long remapped_heldon_start_tick;
+	unsigned int remapped_heldon_alone_timeout;
 };
 
 void addKeytoState(struct appState *state, int remapKey, int altRemapKey, int whenAlone, int withOther)
@@ -450,6 +452,15 @@ int setStateFromConfigLine(struct appState *state, char *line, int linenum)
 		state->debug = 0;
 		return 0;
 	}
+	else if (strstr(line, "remapped_heldon_alone_timeout="))
+	{
+		char *timeout = strchr(line, '=') + 1;
+		if (timeout != NULL)
+		{
+			state->remapped_heldon_alone_timeout = atoi(timeout);
+			return 0;
+		}
+	}
 
 	// Handle key remappings
 	char *keyName = strchr(line, '=') + 1;
@@ -480,7 +491,7 @@ int setStateFromConfigLine(struct appState *state, char *line, int linenum)
 	}
 	else
 	{
-		printf("Cannot parse line %i in config: '%s'.\nMake sure you've used a valid config option, and that that there is no extraneous whitespace. Supported options: 'debug', 'remap_key', 'when_alone', 'with_other'.\n",
+		printf("Cannot parse line %i in config: '%s'.\nMake sure you've used a valid config option, and that that there is no extraneous whitespace. Supported options: 'debug', 'remap_key', 'when_alone', 'with_other', 'remapped_heldon_alone_timeout'.\n",
 			linenum,
 			line);
 		return 1;
@@ -534,6 +545,10 @@ int initStateFromConfig(struct appState *state, wchar_t *path)
 		}
 		key = key->next;
 	} while (key);
+
+	// Make remapped_heldon_alone_timeout reasonable
+	if (state->remapped_heldon_alone_timeout > 2000)
+		state->remapped_heldon_alone_timeout = 650;
 
 	return 0;
 }
@@ -665,6 +680,7 @@ keyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
 	if (inputUpDown == INPUT_KEYDOWN && keyState->state == NOT_HELD_DOWN)
 	{
 		keyState->state = HELD_DOWN_ALONE;
+		g_state.remapped_heldon_start_tick = GetTickCount();
 	}
 	// Handles both cases of remapped key KEYUP:
 	// - Either send whenAlone or finish sending withOther key
@@ -674,8 +690,13 @@ keyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
 	else if (inputUpDown == INPUT_KEYUP && keyState->state == HELD_DOWN_ALONE)
 	{
 		keyState->state = NOT_HELD_DOWN;
-		sendKeyEvent(keyState->whenAlone, INPUT_KEYDOWN);
-		sendKeyEvent(keyState->whenAlone, INPUT_KEYUP);
+		long long now = GetTickCount();
+		unsigned int delta = now - g_state.remapped_heldon_start_tick;
+		if (delta < g_state.remapped_heldon_alone_timeout)
+		{
+			sendKeyEvent(keyState->whenAlone, INPUT_KEYDOWN);
+			sendKeyEvent(keyState->whenAlone, INPUT_KEYUP);
+		}
 	}
 	else if (inputUpDown == INPUT_KEYUP && keyState->state == HELD_DOWN_WITH_OTHER)
 	{
@@ -689,7 +710,7 @@ keyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
 
 int main(void)
 {
-	printf("dual-key-remap.exe version: 0.4, author: ililim\n\n");
+	printf("dual-key-remap.exe version: 0.5, author: ililim, modified by gniuk\n\n");
 	HWND hWnd = GetConsoleWindow();
 	MSG msg;
 	HANDLE hMutexHandle = CreateMutex(NULL, TRUE, "dual-key-remap.single-instance");

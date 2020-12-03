@@ -1,6 +1,10 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## 2020-12-03
+### Added
+- Support `remapped_heldon_alone_timeout=TIMEOUT_MS`. This is a must have for a dual-key tool!
+
 ## 0.5
 ### Changed
 - Mouse scrolling will now trigger the `with_other` modifier (`CTRL` by default).
